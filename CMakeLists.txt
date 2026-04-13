@@ -20,17 +20,24 @@ option(idlib-game-engine-with-demos
 # if a path to Idlib is specified:
 #   if the path is relative
 #     make it absolute
-#   add the path
+#   use the existing parent project setup
 # Otherwise:
-#   initialize the Idlib submodule
-#   add the path
+#   fall back to a sibling ../idlib checkout when available
+#   otherwise require -DIDLIB_PATH for standalone builds
 if (NOT DEFINED IDLIB_PATH)
+ if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../idlib/CMakeLists.txt")
+  set(IDLIB_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../idlib")
+ else()
+  message(FATAL_ERROR
+          "IDLIB_PATH is not set. In the Egoboo superproject this is provided "
+          "by the root CMake project. For standalone idlib-game-engine builds, "
+          "pass -DIDLIB_PATH=/path/to/idlib.")
+ endif()
+ if (NOT IS_ABSOLUTE "${IDLIB_PATH}")
+  get_filename_component(IDLIB_PATH "${IDLIB_PATH}" ABSOLUTE BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+ endif()
  set(idlib-with-tests OFF CACHE BOOL "enable/disable compilation of tests. ON enables compilation of tests, OFF disables compilation of tests. Initial value is OFF." FORCE)
- execute_process(COMMAND git submodule update --init --recursive --depth 32 ${CMAKE_CURRENT_SOURCE_DIR}/idlib WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
- execute_process(COMMAND git checkout -B develop WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/idlib)
- set(IDLIB_PATH ${CMAKE_CURRENT_SOURCE_DIR}/idlib)
  add_subdirectory(${IDLIB_PATH})
- #message("absolute path to Idlib is ${IDLIB_PATH}")
 endif ()
 
 include(${IDLIB_PATH}/buildsystem/set_project_default_properties.cmake)
