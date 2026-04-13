@@ -7,6 +7,33 @@ set_project_default_properties()
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/glew)
 
+set(EGOBOO_MINGW_DEPENDENCY_ROOT "${CMAKE_SOURCE_DIR}/external/mingw" CACHE PATH
+    "Path to the MinGW dependency bundle containing SDL2 headers, libraries, and runtime DLLs.")
+
+function(egoboo_require_mingw_library out_var library_name)
+    set(_library_candidates
+        "${EGOBOO_MINGW_DEPENDENCY_ROOT}/lib/lib${library_name}.dll.a"
+        "${EGOBOO_MINGW_DEPENDENCY_ROOT}/lib/lib${library_name}.a"
+        "${EGOBOO_MINGW_DEPENDENCY_ROOT}/lib/${library_name}.lib"
+        "${EGOBOO_MINGW_DEPENDENCY_ROOT}/lib/${library_name}.a")
+
+    unset(_library_path)
+    foreach(_library_candidate ${_library_candidates})
+        if (EXISTS "${_library_candidate}")
+            set(_library_path "${_library_candidate}")
+            break()
+        endif()
+    endforeach()
+
+    if (NOT DEFINED _library_path)
+        message(FATAL_ERROR
+                "Failed to find MinGW library `${library_name}` under "
+                "`${EGOBOO_MINGW_DEPENDENCY_ROOT}/lib`. "
+                "Set EGOBOO_MINGW_DEPENDENCY_ROOT to a valid Windows dependency bundle.")
+    endif()
+    set(${out_var} "${_library_path}" PARENT_SCOPE)
+endfunction()
+
 ####################################################################################################################
 # "Threads" and "OpenGL" work both on Windows.
 
@@ -24,14 +51,90 @@ IF (NOT WIN32 AND NOT UNIX)
   #FIND_PACKAGE(SDL2_image REQUIRED)
 endif()
 
-# Only available under Linux.
-if (UNIX)
+# Linux-native dependencies.
+if (UNIX AND NOT WIN32)
     #message("searching SDL using FindPkgConfig")
     INCLUDE(FindPkgConfig)
     PKG_SEARCH_MODULE(SDL2 REQUIRED sdl2)
     PKG_SEARCH_MODULE(SDL2_IMAGE REQUIRED SDL2_image>=2.0.0)
     PKG_SEARCH_MODULE(SDL2_MIXER REQUIRED SDL2_mixer>=2.0.0)
     PKG_SEARCH_MODULE(SDL2_TTF REQUIRED SDL2_ttf>=2.0.0)
+endif()
+
+# MinGW builds use a Windows-target dependency bundle instead of Linux pkg-config packages.
+if (MINGW)
+    set(_mingw_include_dir "${EGOBOO_MINGW_DEPENDENCY_ROOT}/include/SDL2")
+    set(_mingw_bin_dir "${EGOBOO_MINGW_DEPENDENCY_ROOT}/bin")
+
+    if (NOT EXISTS "${_mingw_include_dir}/SDL.h")
+        message(FATAL_ERROR
+                "Failed to find SDL headers under `${_mingw_include_dir}`. "
+                "Set EGOBOO_MINGW_DEPENDENCY_ROOT to a valid MinGW dependency bundle.")
+    endif()
+
+    set(SDL2_INCLUDE_DIRS "${_mingw_include_dir}")
+    set(SDL2_IMAGE_INCLUDE_DIRS "${_mingw_include_dir}")
+    set(SDL2_MIXER_INCLUDE_DIRS "${_mingw_include_dir}")
+    set(SDL2_TTF_INCLUDE_DIRS "${_mingw_include_dir}")
+
+    egoboo_require_mingw_library(SDL2_LIBRARY SDL2)
+    egoboo_require_mingw_library(SDL2MAIN_LIBRARY SDL2main)
+    egoboo_require_mingw_library(SDL2_IMAGE_LIBRARY SDL2_image)
+    egoboo_require_mingw_library(SDL2_MIXER_LIBRARY SDL2_mixer)
+    egoboo_require_mingw_library(SDL2_TTF_LIBRARY SDL2_ttf)
+
+    set(SDL2_LIBRARIES
+        mingw32
+        ${SDL2MAIN_LIBRARY}
+        ${SDL2_LIBRARY}
+        dinput8
+        dxguid
+        dxerr8
+        user32
+        gdi32
+        winmm
+        imm32
+        ole32
+        oleaut32
+        shell32
+        version
+        uuid)
+    set(SDL2_IMAGE_LIBRARIES ${SDL2_IMAGE_LIBRARY})
+    set(SDL2_MIXER_LIBRARIES
+        ${SDL2_MIXER_LIBRARY}
+        winmm)
+    set(SDL2_TTF_LIBRARIES ${SDL2_TTF_LIBRARY})
+
+    if (EXISTS "${_mingw_bin_dir}/SDL2.dll")
+        list(APPEND SDL2_RUNTIME_LIBRARIES "${_mingw_bin_dir}/SDL2.dll")
+    endif()
+    if (EXISTS "${_mingw_bin_dir}/SDL2_image.dll")
+        list(APPEND SDL2_IMAGE_RUNTIME_LIBRARIES "${_mingw_bin_dir}/SDL2_image.dll")
+    endif()
+    if (EXISTS "${_mingw_bin_dir}/SDL2_mixer.dll")
+        list(APPEND SDL2_MIXER_RUNTIME_LIBRARIES "${_mingw_bin_dir}/SDL2_mixer.dll")
+    endif()
+    if (EXISTS "${_mingw_bin_dir}/SDL2_ttf.dll")
+        list(APPEND SDL2_TTF_RUNTIME_LIBRARIES "${_mingw_bin_dir}/SDL2_ttf.dll")
+    endif()
+
+    foreach(_runtime_library
+            libjpeg-9.dll
+            libogg-0.dll
+            libpng16-16.dll
+            libtiff-5.dll
+            libvorbis-0.dll
+            libvorbisfile-3.dll
+            libwebp-4.dll
+            libfreetype-6.dll
+            smpeg2.dll
+            zlib1.dll)
+        if (EXISTS "${_mingw_bin_dir}/${_runtime_library}")
+            list(APPEND SDL2_IMAGE_RUNTIME_LIBRARIES "${_mingw_bin_dir}/${_runtime_library}")
+            list(APPEND SDL2_MIXER_RUNTIME_LIBRARIES "${_mingw_bin_dir}/${_runtime_library}")
+            list(APPEND SDL2_TTF_RUNTIME_LIBRARIES "${_mingw_bin_dir}/${_runtime_library}")
+        endif()
+    endforeach()
 endif()
 
 ####################################################################################################################
